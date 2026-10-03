@@ -1,0 +1,8 @@
+name: preview
+on: { workflow_call: { inputs: { command: { type: string, default: 'npm run deploy:preview' } } } }
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ${{ inputs.command }}

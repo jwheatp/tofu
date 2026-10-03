@@ -1,0 +1,11 @@
+name: release
+on: { workflow_call: { inputs: { command: { type: string, default: 'npm run deploy:prod' } } } }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - run: ${{ inputs.command }}
+      - uses: softprops/action-gh-release@v2
+        with: { generate_release_notes: true }

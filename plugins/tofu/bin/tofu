@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 const { execFileSync } = require('child_process');
+const path = require('path');
 const c = require('../lib/core');
+const sc = require('../lib/scaffold');
 
 const [cmd, ...args] = process.argv.slice(2);
 const out = (x) => console.log(typeof x === 'string' ? x : JSON.stringify(x, null, 2));
@@ -25,6 +27,20 @@ function hook(name) {
       const writes = /(sed\s+-i|>>?\s*\S|\btee\b|\bmv\b|\brm\b|git\s+checkout\s+--|\bcp\b)/.test(cmdline);
       const hit = (cmdline.match(/\S+/g) || []).find((t) => !t.startsWith('-') && c.isProtected(t.replace(/^['">]+|['"]+$/g, '')));
       if (writes && hit) { console.error(`Tofu lock: the coder cannot write to ${hit} via shell.`); process.exit(2); }
+    }
+  } else if (name === 'approved-edit' || name === 'invalidate') {
+    const f = i.tool_input && (i.tool_input.file_path || i.tool_input.path) || i.file_path || '';
+    const m = /features\/(\d+)-[^/]+\/(SPEC\.md|design\.md|scenarios\.md)$/.exec(f.split(path.sep).join('/'));
+    if (m && s.features[m[1]] && s.features[m[1]].decisions.approved) {
+      const msg = `⚠ #${m[1]} was approved: editing ${m[2]} invalidates approved and every downstream decision.`;
+      if (name === 'invalidate') { c.invalidate(s, m[1], 'approved'); c.saveState(s); }
+      out({ systemMessage: msg });
+    }
+  } else if (name === 'coder-done') {
+    for (const sc2 of ['typecheck', 'lint', 'test']) {
+      try { const pkg = JSON.parse(require('fs').readFileSync(path.join(c.root(), 'package.json'), 'utf8')); if (!(pkg.scripts || {})[sc2]) continue; } catch { continue; }
+      try { execFileSync('npm', ['run', '--silent', sc2], { cwd: c.root(), stdio: 'pipe' }); }
+      catch (e) { console.error(`Tofu: "npm run ${sc2}" fails; keep working.\n${String(e.stdout || '').slice(-1500)}`); process.exit(2); }
     }
   } else if (name === 'stop') {
     const w = Object.keys(s.features).flatMap((n) => c.warningsFor(s, n));
@@ -76,9 +92,56 @@ try {
       out(`Recorded "${decision}"${n ? ` on #${n}` : ''}.`);
       break;
     }
+    case 'goto': {
+      const [step, n] = args; const w = c.warningsFor(s, n);
+      if (Number(step) >= 7 && !s.features[n].decisions.approved) w.push('Jumping to code without "approved"');
+      s.features[n].step = Number(step); s.features[n].warnings.push(`goto step ${step}`); c.saveState(s);
+      out(`#${n} -> step ${step}${w.length ? '\n' + w.map((x) => '⚠ ' + x).join('\n') : ''}`); break;
+    }
     case 'advance': { const n = args[0]; s.features[n].step += 1; c.saveState(s); out(c.nextAction(s, n)); break; }
     case 'invalidate': c.saveState(c.invalidate(s, args[0], args[1])); out('Invalidated.'); break;
+    case 'init': { const r = sc.init(c.root(), { profile: args.includes('--loop') ? 'loop' : 'full' }); out(`Created:\n${r.created.map((x) => '  + ' + x).join('\n')}\nKept (existing):\n${r.skipped.map((x) => '  = ' + x).join('\n') || '  -'}`); break; }
+    case 'adopt': {
+      const r = sc.adopt(c.root());
+      const done = args.filter((a) => /^[a-z-]+=/.test(a));
+      for (const d of done) { const [k, ref] = d.split('='); c.approve(s, k, undefined, { person: process.env.USER, evidence: ref }); s.decisions[k].adopted = true; }
+      c.saveState(s);
+      out({ detected: r.found, configWritten: r.wrote, adoptedDecisions: done.map((d) => d.split('=')[0]) });
+      break;
+    }
+    case 'labels': {
+      for (const l of sc.LABELS) { try { execFileSync('gh', ['label', 'create', l, '--force'], { stdio: 'pipe' }); } catch (e) { console.error(`label ${l}: ${e.message.split('\n')[0]}`); } }
+      out(`${sc.LABELS.length} labels ensured.`); break;
+    }
+    case 'release': {
+      const [sub, a] = args;
+      const cfg = c.loadConfig();
+      if (sub === 'new') { s.release = { version: a, features: [], rc: 0 }; out(`Release v${a} created.`); }
+      else if (sub === 'add') out(sc.stage(c.root(), s, a, cfg));
+      else if (sub === 'remove') out(sc.unstage(c.root(), s, a));
+      else if (sub === 'accept') { if (!s.release) throw new Error('No release'); s.release.accepted = { person: process.env.USER, date: new Date().toISOString() }; out('Release accepted.'); }
+      else out(s.release ? `v${s.release.version} rc.${s.release.rc}: ${s.release.features.map((n) => '#' + n).join(', ') || 'no features'}${s.release.accepted ? ' ✓ accepted' : ''}` : 'No open release.');
+      c.saveState(s); break;
+    }
+    case 'ship': out(sc.ship(c.root(), s, c.loadConfig())); c.saveState(s); break;
+    case 'hotfix': {
+      const [n, slug] = args;
+      sc.git(c.root(), 'checkout', '-b', `hotfix/${n}-${slug}`, args[2] || 'main');
+      s.features[n] = { slug, step: 6, decisions: {}, warnings: [], hotfix: true };
+      c.saveState(s); out(`Hotfix #${n} branched; reduced Build: test first, code, verify.`); break;
+    }
+    case 'change': { const n = args[0]; s.features[n].step = 5; c.invalidate(s, n, 'approved'); s.features[n].warnings.push('change request: back to spec'); c.saveState(s); out(`#${n} back to spec (step 5); downstream decisions invalidated.`); break; }
+    case 'light': {
+      const [n] = args; const cfg = c.loadConfig(); const lm = cfg.light_mode || {};
+      const lines = sc.git(c.root(), 'diff', '--shortstat', 'HEAD').match(/(\d+) insertion|(\d+) deletion/g) || [];
+      const total = lines.reduce((a, x) => a + parseInt(x, 10), 0);
+      const names = sc.git(c.root(), 'diff', '--name-only', 'HEAD').split('\n').filter(Boolean);
+      const bad = names.filter((f) => (lm.forbidden_paths || []).some((g) => c.globToRe(g).test(f)));
+      const ok = total <= (lm.max_changed_lines || 50) && !bad.length;
+      out({ eligible: ok, changedLines: total, forbidden: bad }); break;
+    }
+    case 'retro': { s.retro = [...(s.retro || []), { date: new Date().toISOString(), lesson: args.join(' ') }]; c.saveState(s); out('Lesson recorded (add it to AGENTS.md / checklists / generic tests).'); break; }
     case 'sync': sync(); break;
-    default: out('Usage: tofu <status [--line]|next [n]|start <n> <slug>|approve <decision> [n] [--skip reason]|advance <n>|sync|hook <name>>');
+    default: out('Usage: tofu <status [--line]|next [n]|start <n> <slug>|approve <decision> [n] [--skip reason]|advance <n>|init [--loop]|adopt [decision=ref..]|labels|release <new v|add n|remove n|accept>|ship|hotfix <n> <slug>|change <n>|light|retro <lesson>|sync|hook <name>>');
   }
 } catch (e) { console.error(`tofu: ${e.message}`); process.exit(1); }

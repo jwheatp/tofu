@@ -31,21 +31,22 @@ function globToRe(g) {
   const re = g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '\0').replace(/\*/g, '[^/]*').replace(/\0/g, '(?:.*/)?');
   return new RegExp('^' + re.replace(/\/\(\?:\.\*\/\)\?$/, '(?:/.*)?') + '$');
 }
-function protectedGlobs(r = root()) {
-  try {
-    const y = fs.readFileSync(path.join(r, 'tofu.config.yml'), 'utf8');
-    const m = y.match(/^\s*protected:\s*\[(.*?)\]/m);
-    if (m) return m[1].split(',').map((x) => x.trim()).filter(Boolean);
-  } catch {}
-  return DEFAULT_PROTECTED;
+function loadConfig(r = root()) {
+  try { return require('./yaml').parse(fs.readFileSync(path.join(r, 'tofu.config.yml'), 'utf8')); } catch { return {}; }
 }
+function protectedGlobs(r = root()) {
+  const p = loadConfig(r).paths;
+  return (p && Array.isArray(p.protected) && p.protected) || DEFAULT_PROTECTED;
+}
+// A decision is required unless config says optional/off.
+function decisionMode(cfg, d) { return (cfg.decisions && cfg.decisions[d]) || 'required'; }
 function isProtected(file, r = root()) {
   const rel = path.relative(r, path.resolve(r, file)).split(path.sep).join('/');
   return protectedGlobs(r).some((g) => globToRe(g).test(rel));
 }
 
-function missingFrame(s, cfg = {}) {
-  return FRAME_DECISIONS.filter((d) => !s.decisions[d]);
+function missingFrame(s, cfg = loadConfig()) {
+  return FRAME_DECISIONS.filter((d) => decisionMode(cfg, d) === 'required' && !s.decisions[d]);
 }
 
 // Deterministic "what next" for a feature (or the project when n is undefined).
@@ -75,6 +76,7 @@ function warningsFor(s, n) {
 function approve(s, decision, n, { person, reason, evidence } = {}) {
   if (!DECISIONS.includes(decision)) throw new Error(`Unknown decision "${decision}"`);
   const rec = { person: person || 'unknown', date: new Date().toISOString(), ...(reason ? { skipped: reason } : {}), ...(evidence ? { evidence } : {}) };
+  if (decision === 'release-accepted') { if (!s.release) throw new Error('No open release'); s.release.accepted = rec; return s; }
   const target = FRAME_DECISIONS.includes(decision) ? s : s.features[n];
   if (!target) throw new Error(`Feature #${n} not found`);
   target.decisions[decision] = rec;
@@ -105,4 +107,4 @@ function statusLine(s) {
   }).join(' | ');
 }
 
-module.exports = { DECISIONS, loadState, saveState, isProtected, nextAction, warningsFor, approve, invalidate, statusLine, globToRe, root };
+module.exports = { loadConfig, decisionMode, missingFrame, DECISIONS, loadState, saveState, isProtected, nextAction, warningsFor, approve, invalidate, statusLine, globToRe, root };
