@@ -1,0 +1,7 @@
+{
+  "name": "tofu-marketplace",
+  "owner": { "name": "Kompose" },
+  "plugins": [
+    { "name": "tofu", "source": "./plugins/tofu", "description": "Spec-anchored, decision-driven development process" }
+  ]
+}

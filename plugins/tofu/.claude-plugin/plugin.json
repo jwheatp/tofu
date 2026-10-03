@@ -1,0 +1,5 @@
+{
+  "name": "tofu",
+  "version": "0.1.0",
+  "description": "Spec-anchored, decision-driven development process: phases, recorded decisions, warnings and two hard locks."
+}
