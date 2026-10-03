@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tofu configuration",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "profile": { "enum": ["build", "full"], "description": "build = Build only; full = Build, Release, Ship" },
+    "frame": {
+      "type": "object",
+      "description": "Where the Frame outputs are (any path or URL).",
+      "properties": {
+        "brief": { "type": "string" },
+        "designSystem": { "type": "string" },
+        "architecture": { "type": "string" },
+        "features": { "type": "string", "description": "Free-form feature list: one line per feature, with order or dependencies." }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "properties": {
+        "tests": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "Test locations protected from the coder." },
+        "contracts": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "Shared contracts the tester may read." },
+        "app": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "Application code the challenger and tester must not read. Default: src/**" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "properties": {
+        "mutationScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "maxFeaturesPerRelease": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "lightMode": {
+      "type": "object",
+      "properties": {
+        "maxChangedLines": { "type": "integer", "minimum": 1 },
+        "forbiddenPaths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "properties": { "preview": { "type": "string" }, "production": { "type": "string" } }
+    },
+    "rules": { "type": "array", "items": { "type": "string" }, "description": "Project-specific instructions added to the generic agent rules." },
+    "checks": { "type": "array", "items": { "type": "string" }, "description": "Optional shell commands run when the coder stops (default: npm typecheck, lint, test)." }
+  }
+}

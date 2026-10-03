@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jwheatp/tofu/v1/schema/tofu.config.schema.json",
+  "profile": "full",
+  "frame": {
+    "brief": "",
+    "designSystem": "",
+    "architecture": "",
+    "features": ""
+  },
+  "paths": {
+    "tests": ["tests/", "e2e/"],
+    "contracts": "src/contracts/"
+  },
+  "thresholds": {
+    "mutationScore": 75,
+    "maxFeaturesPerRelease": 4
+  },
+  "lightMode": {
+    "maxChangedLines": 50,
+    "forbiddenPaths": ["src/domain/**", "src/contracts/**"]
+  },
+  "deploy": {
+    "preview": "npm run deploy:preview",
+    "production": "npm run deploy:prod"
+  },
+  "rules": []
+}

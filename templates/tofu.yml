@@ -1,0 +1,15 @@
+name: tofu
+on:
+  push:
+    branches: ['tofu/**']
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+    branches: [staging, main, 'tofu/**']
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  tofu:
+    uses: jwheatp/tofu/.github/workflows/tofu.yml@v1
+    secrets: inherit

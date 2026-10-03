@@ -1,13 +1,29 @@
-# Tofu
+# 🥢 Tofu
 
-Claude Code plugin: spec-anchored, decision-driven development (Frame → Build → Release → Ship).
+Lightweight Claude Code plugin that guides and guards the build of each feature, from spec to production. **Passive**: it reminds, warns and protects, and acts only when you run a skill. Only skills, agents and hooks — no CLI, no service.
 
-- Install: `/plugin marketplace add <org>/tofu` then `/plugin install tofu@tofu-marketplace`
-- Daily commands: `/tofu:next`, `/tofu:approve`, `/tofu:status`
-- Advanced: `init`, `adopt`, `start`, `goto`, `release`, `ship`, `change`, `hotfix`, `retro`, `sync`, `help`
-- Layout: `plugins/tofu` (skills, agents, hooks, `bin/tofu` CLI, `lib/`), `.github/workflows` (reusable CI: feature, locks, decisions, preview, staging, release)
-- Tests: `node --test "plugins/tofu/test/*.test.js"`
+Each feature lives in one draft pull request (`[tofu] <Title>`, branch `tofu/<n>-<slug>`): spec, design reference, status and every decision.
 
-Hard locks: the coder cannot edit tests/specs/docs/CI/config (hooks + `locks.yml`); merges to staging/main need recorded decisions (`decisions.yml`).
+## Install
+```
+/plugin marketplace add jwheatp/tofu
+/plugin install tofu@tofu-marketplace
+/tofu:setup        # writes tofu.config.json + .github/workflows/tofu.yml, nothing else
+```
 
-Not yet implemented: Claude Design export/drift check, judge on a second model, Tofu pane (v2), mutation/duplication checks in `feature.yml`.
+## Daily use
+`/tofu:next` · `/tofu:approve` · `/tofu:status` — optional: `setup`, `start`, `release`, `ship`, `change`, `hotfix`, `help`.
+
+## Layout
+- `skills/`, `agents/` (`tofu:challenger|tester|coder|judge`), `hooks/` (Node scripts called only by hooks), `rules/agents.md`, `templates/`, `schema/`
+- `ci/` + `.github/workflows/tofu.yml`: reusable CI (quality, status comment, locks, decisions, invalidation on spec edit); call it with `templates/tofu.yml` pinned at `@v1`
+- Tests: `npm test`
+
+## Hard locks
+1. The coder cannot modify tests, CI or Tofu config, nor edit the PR (hooks + CI `locks`).
+2. Merges to `staging`/`main` need the matching `tofu:*` labels (CI `decisions`); only a recorded human override bypasses.
+
+## Notes / to verify against your Claude Code version
+- Hooks identify subagents through `agent_type` (`tofu:coder`…); `UserPromptExpansion` input field names are read loosely.
+- `checks` (optional list of commands run when the coder stops) is an addition to the spec's config keys.
+- Pin the shared CI by tagging this repo `v1`; enable Actions access to this private repo for your organisation (and optionally set the `TOFU_READ_TOKEN` secret).

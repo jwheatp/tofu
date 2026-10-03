@@ -1,0 +1,105 @@
+# Reusable workflow. Projects call it in one line (see templates/tofu.yml).
+name: tofu
+on:
+  workflow_call:
+    inputs:
+      tofu_repo: { type: string, default: jwheatp/tofu }
+      tofu_ref: { type: string, default: v1 }
+    secrets:
+      TOFU_READ_TOKEN: { required: false }
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+jobs:
+  quality:
+    if: startsWith(github.head_ref || github.ref_name, 'tofu/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tofu_repo }}
+          ref: ${{ inputs.tofu_ref }}
+          path: .tofu-ci
+          token: ${{ secrets.TOFU_READ_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/* }
+      - run: npm ci --if-present
+      - name: Types, lint, tests, mutation
+        run: |
+          for s in typecheck lint test mutation; do npm run --if-present "$s" || exit 1; done
+      - name: Dependency audit
+        run: '[ -f package-lock.json ] && npm audit --audit-level=high || true'
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: '${{ github.token }}' }
+      - name: Traceability (every rule has a test)
+        run: node .tofu-ci/ci/trace.js
+
+  status:
+    needs: quality
+    if: always() && startsWith(github.head_ref || github.ref_name, 'tofu/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tofu_repo }}
+          ref: ${{ inputs.tofu_ref }}
+          path: .tofu-ci
+          token: ${{ secrets.TOFU_READ_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/* }
+      - run: node .tofu-ci/ci/validate.js
+      - run: node .tofu-ci/ci/status.js
+        env: { TOFU_QUALITY: '${{ needs.quality.result }}' }
+
+  locks:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'tofu/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tofu_repo }}
+          ref: ${{ inputs.tofu_ref }}
+          path: .tofu-ci
+          token: ${{ secrets.TOFU_READ_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/* }
+      - run: node .tofu-ci/ci/locks.js
+
+  decisions:
+    if: github.event_name == 'pull_request' && (github.base_ref == 'staging' || github.base_ref == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tofu_repo }}
+          ref: ${{ inputs.tofu_ref }}
+          token: ${{ secrets.TOFU_READ_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/* }
+      - run: node ci/decisions.js
+
+  invalidate:
+    if: github.event_name == 'pull_request' && github.event.action == 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tofu_repo }}
+          ref: ${{ inputs.tofu_ref }}
+          token: ${{ secrets.TOFU_READ_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/* }
+      - run: node ci/invalidate.js

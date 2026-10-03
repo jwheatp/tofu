@@ -1,14 +1,8 @@
 {
   "name": "tofu-marketplace",
-  "owner": {
-    "name": "Kompose"
-  },
+  "description": "Private marketplace for the Tofu development plugin",
+  "owner": { "name": "Kompose" },
   "plugins": [
-    {
-      "name": "tofu",
-      "source": "./plugins/tofu",
-      "description": "Spec-anchored, decision-driven development process"
-    }
-  ],
-  "description": "Private marketplace for the Tofu development process plugin"
+    { "name": "tofu", "source": "./", "description": "Passive, PR-anchored guide and guard for building each feature from spec to production." }
+  ]
 }
